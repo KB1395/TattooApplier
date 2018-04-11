@@ -19,6 +19,7 @@ imgTatoo=imgTatoo[:,:,0:3]
 tatOrigHeight,tatOrigWidth = imgTatoo.shape[:2]
 
 
+
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
 ap.add_argument("-v", "--video",
@@ -30,10 +31,9 @@ args = vars(ap.parse_args())
 # define the lower and upper boundaries of the "green"
 # ball in the HSV color space, then initialize the
 # list of tracked points
-greenLower = (0, 0, 73)
-greenUpper = (35, 93, 255)
+greenLower = (5, 0, 134)
+greenUpper = (110, 44, 255)
 pts = deque(maxlen=args["buffer"])
-
 # if a video path was not supplied, grab the reference
 # to the webcam
 if not args.get("video", False):
@@ -50,6 +50,7 @@ while True:
 
 	# if we are viewing a video and we did not grab a frame,
 	# then we have reached the end of the video
+	overlay = frame.copy()
 	if args.get("video") and not grabbed:
 		break
 
@@ -88,30 +89,34 @@ while True:
 		# only proceed if the radius meets a minimum size
 		if radius > 10:
 			#draw contour of desired shape
-			cv2.drawContours( frame, c, -1, (239, 0, 0),6 )
+			# cv2.drawContours( frame, c, -1, (239, 0, 0),6 )
 			#create the smallest box containing that contour
 			rect = cv2.minAreaRect(c)
 			box = cv2.boxPoints(rect)
 			box = np.int0(box)
 			#draw the box
-			cv2.drawContours(frame,[box],0,(0,0,255),2)
+			# cv2.drawContours(frame,[box],0,(0,0,255),2)
 			#Save the box parameters (center,height,width and angle)
 			areaCenter=rect[0]
 			areaX,areaY=int(areaCenter[0]),int(areaCenter[1])
 			areaSize=rect[1]
 			areaHeight=int(areaSize[0])
 			areaWidth=int(areaSize[1])
-			areaAngle=rect[2]
+			areaAngle=-rect[2]
+			
+			
+			tatOrigHeight,tatOrigWidth = imgTatoo.shape[:2]
 			#define the tattoo size
 			tatWidth=int(0.2*areaWidth)
 			tatHeight=tatWidth * tatOrigHeight // tatOrigWidth
+			
 			
 			#face = cv2.rectangle(frame,(areaX-areaWidth//4,areaY-areaHeight//4),(areaX+areaWidth//4,areaY+areaHeight//4),(255,0,0),2)
 			
 			#roiGray=gray[areaY-areaHeight//2:areaY+areaHeight//2, areaX-areaWidth//2:areaX+areaWidth//2]
 			
 			#create a mask from the video feed with the size of the region of interest (box created before)
-			roiColor=frame[areaY-areaHeight//2:areaY+areaHeight//2, areaX-areaWidth//2:areaX+areaWidth//2]
+			roiColor=frame[areaY-areaHeight:areaY+areaHeight, areaX-areaWidth:areaX+areaWidth]
 			
 			# print(areaX,areaY,areaWidth,areaHeight)
 			# print(tatWidth,tatHeight)
@@ -131,7 +136,7 @@ while True:
 				x2 = areaWidth
 			if y2 > areaHeight:
 				y2 = areaHeight
-			print(x1,x2,y1,y2)
+			# print(x1,x2,y1,y2)
 			
 			# resize the tattoo to match the ROI size
 			tatHeight=tatWidth * tatOrigHeight // tatOrigWidth
@@ -142,16 +147,19 @@ while True:
 				tatHeight=1
 			if tatWidth<=0:
 				tatWidth=2
-			print(tatHeight)
-			print(tatWidth)
+			# print(tatHeight)
+			# print(tatWidth)
 			
 			# resize all the masks to the same size in order to merge them
 			tatoo=cv2.resize(imgTatoo,(tatWidth,tatHeight),interpolation=cv2.INTER_AREA)
 			mask2=cv2.resize(tatMask,(tatWidth,tatHeight),interpolation=cv2.INTER_AREA)
 			mask2inv=cv2.resize(invTatMask,(tatWidth,tatHeight),interpolation=cv2.INTER_AREA)
 			
+			N = cv2.getRotationMatrix2D((tatWidth/2,tatHeight/2),areaAngle,1)
 			
-			print(mask2inv.shape)
+			mask2=cv2.warpAffine(mask2,N,(tatWidth,tatHeight))
+			mask2inv=cv2.warpAffine(mask2inv,N,(tatWidth,tatHeight))
+			# print(mask2inv.shape)
 			
 			#attempt to save the ROI coordinates
 			fy1=y1
@@ -161,27 +169,28 @@ while True:
 			
 			#create a ROI mask
 			roi = frame[fy1:fy2,fx1:fx2]
-			print(roi.shape)
+			# print(roi.shape)
 			
             #merge the roi mask with the tatoo and the inverted tatoo masks
 			roi_bg = cv2.bitwise_and(roi,roi,mask = mask2inv)
 			roi_fg = cv2.bitwise_and(tatoo,tatoo,mask = mask2)
 			
-			print(roi_bg.shape,roi_fg.shape)
+			# print(roi_bg.shape,roi_fg.shape)
 			
 			#merge the background and foreground ROI masks
-			dst = cv2.add(roi_bg,roi_fg)
+			dst = cv2.add(roi_bg,roi_bg)
 			
-			print("dst: ",dst.shape)
-			print("roi: ",roiColor.shape)
-			print(fy1,fy2,fy2-fy1)
-			print(fx1,fx2,fx2-fx1)
-			
+			# print("dst: ",dst.shape)
+			# print("roi: ",roiColor.shape)
+			# print(fy1,fy2,fy2-fy1)
+			# print(fx1,fx2,fx2-fx1)
 			# add the merged mask to the video feed
-			roiColor[fy1:fy2,fx1:fx2]=dst
+			frame[fy1:fy2,fx1:fx2]=roi_bg
 		
+	
 
 	# show the frame to our screen
+	
 	cv2.imshow("Frame", frame)
 	key = cv2.waitKey(1) & 0xFF
 
